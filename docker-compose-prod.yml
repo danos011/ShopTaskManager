@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.app
+    volumes:
+      - ./docker_volumes/app_logs:/logs
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=${REDIS_DB:-0}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_MAX_CONNECTIONS=${REDIS_MAX_CONNECTIONS:-50}
+      - REDIS_SOCKET_TIMEOUT=${REDIS_SOCKET_TIMEOUT:-5}
+      - REDIS_DECODE_RESPONSES=${REDIS_DECODE_RESPONSES:-True}
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - backend-net
+
+  redis:
+    image: redis:latest
+    restart: always
+    volumes:
+      - redis_/data
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend-net
+
+volumes:
+  redis_:
+
+networks:
+  backend-net:
+    driver: bridge
