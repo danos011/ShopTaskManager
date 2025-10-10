@@ -5,7 +5,7 @@ services:
     image: redis:latest
     restart: always
     volumes:
-     - ./docker_volumes/redis:/usr/share/redis/data
+      - ./docker_volumes/redis:/data
     ports:
       - '6379:6379'
     healthcheck:
@@ -13,6 +13,55 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - backend-net
+
+  workers:
+    build:
+      context: .
+      dockerfile: celery_service/Dockerfile.celery
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=1
+      - REDIS_MAX_CONNECTIONS=50
+      - REDIS_SOCKET_TIMEOUT=5
+      - REDIS_DECODE_RESPONSES=True
+      - CELERY_BROKER_DSN=redis://redis:6379/0
+      - CELERY_BACKEND_DSN=redis://redis:6379/1
+    command: >
+      bash -c "
+      celery -A celery_service.celery_app worker -Q default -l info &
+      celery -A celery_service.celery_app worker -Q priority -l info
+      "
+    volumes:
+      - ./logs/app.log:/app/logs/app.log
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - backend-net
+
+  celery_beat:
+    container_name: beat
+    build:
+      context: .
+      dockerfile: celery_service/Dockerfile.celery
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=1
+      - REDIS_MAX_CONNECTIONS=50
+      - REDIS_SOCKET_TIMEOUT=5
+      - REDIS_DECODE_RESPONSES=True
+      - CELERY_BROKER_DSN=redis://redis:6379/0
+      - CELERY_BACKEND_DSN=redis://redis:6379/1
+    command: celery -A celery_service.celery_app beat --loglevel=info
+    volumes:
+      - ./logs/app.log:/app/logs/app.log
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - backend-net
 

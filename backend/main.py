@@ -12,14 +12,14 @@ from fastapi.openapi.utils import get_openapi
 from starlette.middleware.cors import CORSMiddleware
 
 from backend import api
-from backend.registry import ENV
+from backend.registry import ENV, broker_redis, backend_redis
 
 load_dotenv()
 
 if ENV != "PROD":
-    logging.config.fileConfig("backend/logging.conf")
+    logging.config.fileConfig("backend/logging.conf", disable_existing_loggers=False)
 else:
-    logging.config.fileConfig("logging.conf")
+    logging.config.fileConfig("logging.conf", disable_existing_loggers=False)
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,12 @@ async def lifespan(app: FastAPI):
     logger.info(f"Process {process_name} started")
     logger.info("Server started")
 
+    broker_redis.connect()
+    backend_redis.connect()
+
     yield
+    broker_redis.close()
+    backend_redis.close()
 
     logger.info("Server shutting down")
 

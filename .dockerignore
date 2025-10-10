@@ -1,10 +1,8 @@
 venv/
-
 .idea/
 __pycache__/
 *.pyc
-
 ./LICENSE
 ./README.md
-
 /logs
+/docker_volumes

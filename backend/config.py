@@ -12,7 +12,6 @@ class Settings(BaseSettings):
     redis_host: str
     redis_port: int
     redis_db: int
-    redis_password: int
     redis_max_connections: int
     redis_socket_timeout: int
     redis_decode_responses: bool
