@@ -6,3 +6,4 @@ __pycache__/
 ./README.md
 /logs
 /docker_volumes
+/env

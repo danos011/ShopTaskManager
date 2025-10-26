@@ -35,10 +35,20 @@ services:
       celery -A celery_service.celery_app worker -Q priority -l info
       "
     volumes:
-      - ./logs/app.log:/app/logs/app.log
+      - ./logs:/app/logs
     depends_on:
       redis:
         condition: service_healthy
+    networks:
+      - backend-net
+
+  flower:
+    image: mher/flower:0.9.7
+    command: [ 'flower', '--broker=redis://redis:6379/0', '--port=5555' ]
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
     networks:
       - backend-net
 
@@ -58,7 +68,7 @@ services:
       - CELERY_BACKEND_DSN=redis://redis:6379/1
     command: celery -A celery_service.celery_app beat --loglevel=info
     volumes:
-      - ./logs/app.log:/app/logs/app.log
+      - ./logs:/app/logs
     depends_on:
       redis:
         condition: service_healthy

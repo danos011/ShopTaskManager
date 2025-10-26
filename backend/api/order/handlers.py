@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+from starlette import status
 
 from backend.models.order.requests import RequestOrder
 from backend.models.order.responses import ResponseOrder
@@ -7,7 +8,7 @@ from backend.tasks.worker_tasks import process_order
 router = APIRouter(prefix="/order", tags=["Order"])
 
 
-@router.post("/", response_model=ResponseOrder)
+@router.post("/", status_code=status.HTTP_201_CREATED, response_model=ResponseOrder)
 async def order(data: RequestOrder) -> ResponseOrder:
     task = process_order.delay(
         order_id=data.order_id,
@@ -15,5 +16,4 @@ async def order(data: RequestOrder) -> ResponseOrder:
         quantity=data.quantity,
         email=data.email,
     )
-
-    return ResponseOrder(task_id=1)
+    return ResponseOrder(task_id=task.id)

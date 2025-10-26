@@ -3,6 +3,7 @@ from datetime import datetime
 from fastapi import HTTPException
 from fpdf import FPDF
 from starlette import status
+from starlette.responses import JSONResponse
 
 
 def throw_server_error(message: str):
@@ -27,6 +28,10 @@ def throw_credential_exception():
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+
+def get_ok_message():
+    return JSONResponse({"message": "ok"})
 
 
 def create_invoice(order_id: int, product: str, quantity: int) -> bytes:
@@ -58,5 +63,5 @@ def create_invoice(order_id: int, product: str, quantity: int) -> bytes:
     pdf.ln(5)
 
     # ✅ Получаем bytes
-    pdf_bytes = pdf.output()
+    pdf_bytes = pdf.output(dest="S").encode("latin1")
     return pdf_bytes

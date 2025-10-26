@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, Dict
+from typing import Optional
 import redis
 
 from backend.config import CONFIG
@@ -9,12 +9,12 @@ logger = logging.getLogger(__name__)
 
 
 class RedisClient:
-    _instances: Dict[int, "RedisClient"] = {}
+    _instances: dict[int, "RedisClient"] = {}
 
     def __init__(self, db: int):
         self.db = db
-        self._client: Optional[redis.Redis] = None
-        self._pool: Optional[redis.ConnectionPool] = None
+        self._client: redis.Redis | None = None
+        self._pool: redis.ConnectionPool | None = None
 
     def __new__(cls, db: int):
         if db not in cls._instances:
@@ -61,19 +61,23 @@ class RedisClient:
         try:
             self._client.ping()
         except (redis.ConnectionError, redis.TimeoutError):
-            print(f"Redis connection lost for db={self.db}, reconnecting...")
             logger.warning(f"Redis connection lost for db={self.db}, reconnecting...")
             self.connect()
         return self._client
 
-    def get(self, key: str) -> Optional[str]:
-        try:
-            return self.client.get(key)
-        except Exception as e:
-            logger.exception(f"Redis GET error for key '{key}': {e}")
-            raise throw_server_error(f"Redis GET error: {e}")
+    def get(self, key: str) -> str or bytes | None:
+        value = self.client.get(key)
+        if value is None:
+            return None
 
-    def set(self, key: str, value: str, ex: Optional[int] = None) -> bool:
+        if key.startswith("invoice:"):
+            return value
+
+        if isinstance(value, bytes):
+            return value.decode("utf-8")
+        return value
+
+    def set(self, key: str, value: str, ex: int | None = None) -> bool:
         try:
             return self.client.set(key, value, ex=ex)
         except Exception as e:
@@ -94,7 +98,7 @@ class RedisClient:
             logger.exception(f"Redis EXISTS error: {e}")
             raise throw_server_error(f"Redis EXISTS error: {e}")
 
-    def hget(self, name: str, key: str) -> Optional[str]:
+    def hget(self, name: str, key: str) -> str | None:
         try:
             return self.client.hget(name, key)
         except Exception as e:

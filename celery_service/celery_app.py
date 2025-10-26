@@ -2,7 +2,9 @@ from celery import Celery
 from celery.signals import worker_shutdown, worker_ready
 
 from celery_service.config import celery_config
-import logging
+import logging.config
+
+logging.config.fileConfig("backend/logging.conf")
 
 celery_logger = logging.getLogger(__name__)
 
@@ -11,6 +13,7 @@ CELERY = Celery(
     broker=celery_config.celery_broker_dsn,
     backend=celery_config.celery_backend_dsn,
     include=["backend.tasks.worker_tasks", "backend.tasks.beat_tasks"],
+    result_expires=3600,
 )
 
 CELERY.conf.task_routes = {

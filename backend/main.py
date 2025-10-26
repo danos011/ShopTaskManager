@@ -13,6 +13,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from backend import api
 from backend.registry import ENV, broker_redis, backend_redis
+from backend.redis_init.initialization import redis_ini
 
 load_dotenv()
 
@@ -33,7 +34,10 @@ async def lifespan(app: FastAPI):
     broker_redis.connect()
     backend_redis.connect()
 
+    redis_ini()
+
     yield
+
     broker_redis.close()
     backend_redis.close()
 
