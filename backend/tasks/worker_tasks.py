@@ -20,12 +20,6 @@ def process_order(self, order_id: int, product: str, quantity: int, email: str):
             celery_logger.error(f"This order {order_id} has already been received!")
             raise throw_bad_request("This order has already been received!")
 
-        check_product = backend_redis.get(f"stock:{product}")
-
-        if check_product is not None:
-            celery_logger.error(f"This product {order_id} is absent!")
-            raise throw_bad_request(f"This product {order_id} is absent!")
-
         stock_key = f"stock:{product}"
         current_stock = backend_redis.get(stock_key)
 
@@ -35,7 +29,7 @@ def process_order(self, order_id: int, product: str, quantity: int, email: str):
 
         new_stock = int(current_stock) - quantity
         backend_redis.set(stock_key, new_stock)
-        celery_logger.info("New stock: ", new_stock)
+        celery_logger.info(f"New stock: {new_stock}")
         backend_redis.set(f"order:{order_id}:status", "processed")
 
         message = f"Your order #{order_id} has been processed successfully!"

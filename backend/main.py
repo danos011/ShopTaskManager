@@ -20,7 +20,7 @@ load_dotenv()
 if ENV != "PROD":
     logging.config.fileConfig("backend/logging.conf", disable_existing_loggers=False)
 else:
-    logging.config.fileConfig("logging.conf", disable_existing_loggers=False)
+    logging.config.fileConfig("prod_logging.conf", disable_existing_loggers=False)
 
 logger = logging.getLogger(__name__)
 
