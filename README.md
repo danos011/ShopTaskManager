@@ -6,23 +6,20 @@
 ---
 
 ## Содержание
-
-- Архитектура
-- Требования
-- Установка и запуск
-- Конфигурация (.env)
-- Команды entrypoint.sh (dev/prod)
-- Эндпоинты API и примеры
-- Очереди и задачи Celery
-- Ключи в Redis
-- Мониторинг (Flower)
-- Разработка и отладка
-- Админ‑операции (Redis, Docker)
-- Траблшутинг
+- <a href="#sec-arch">Архитектура</a>
+- <a href="#sec-reqs">Требования</a>
+- <a href="#sec-run">Установка и запуск</a>
+- <a href="#sec-env">Конфигурация (env)</a>
+- <a href="#sec-entry">Команды entrypoint.sh (dev/prod)</a>
+- <a href="#sec-api">Эндпоинты API и примеры</a>
+- <a href="#sec-celery">Очереди и задачи Celery</a>
+- <a href="#sec-redis">Ключи в Redis</a>
+- <a href="#sec-monitor">Мониторинг</a>
 
 ---
 
 ## Архитектура
+<a id="sec-arch"></a>
 
 Сервисы:
 
@@ -50,13 +47,15 @@ Volumes:
 ---
 
 ## Требования
+<a id="sec-reqs"></a>
 
 - Docker, Docker Compose
 - Открытые порты 8000/5555/6379
 
 ---
 
-## Установка и запуск(дев среда)
+## Установка и запуск (дев среда)
+<a id="sec-run"></a>
 
 1) Клонирование:
 
@@ -127,6 +126,7 @@ FLOWER_PASSWORD=<set_your_password>
 ---
 
 ## Эндпоинты API и примеры
+<a id="sec-api"></a>
 
 Swagger/OpenAPI:
 
@@ -175,6 +175,8 @@ curl -X POST http://localhost:8000/test_notification
 ---
 
 ## Очереди и задачи Celery
+<a id="sec-celery"></a>
+
 
 Очереди:
 - `default` — `process_order`, `generate_invoice`, `daily_stock_report`, `check_pending_orders`
@@ -193,6 +195,7 @@ curl -X POST http://localhost:8000/test_notification
 ---
 
 ## Ключи в Redis
+<a id="sec-redis"></a>
 
 Шаблоны:
 - `order:{order_id}:status` — строка статуса (`processed`, `failed`, ...).
@@ -200,4 +203,15 @@ curl -X POST http://localhost:8000/test_notification
 - `stock:{sku}` — остатки (число).
 - `celery:*` — служебные ключи брокера/результатов.
 
-Команды:
+## Мониторинг (Flower)
+<a id="sec-monitor"></a>
+
+- URL: http://localhost:5555
+- Логин: `admin`
+- Пароль: `FLOWER_PASSWORD` из `.env`
+
+Возможности:
+- Воркеры, очереди, задачи (Running/Success/Failed)
+- История, графики, ревок/ретрай
+
+---

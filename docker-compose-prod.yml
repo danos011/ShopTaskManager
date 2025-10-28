@@ -68,7 +68,18 @@ services:
 
   flower:
     image: mher/flower:0.9.7
-    command: [ 'flower', '--broker=redis://redis:6379/0', '--port=5555' ]
+    command:
+      - flower
+      - --broker=redis://redis:6379/0
+      - --port=5555
+      - --basic_auth=admin:12345
+      - --url_prefix=/flower
+      # альтернативный вариант без подстановки оболочки:
+      # - --basic_auth=admin:$(FLOWER_PASSWORD)
+    environment:
+      - FLOWER_USER=admin
+      - FLOWER_PASSWORD=12345
+      - FLOWER_URL_PREFIX=/flower
     ports:
       - "5555:5555"
     depends_on:
