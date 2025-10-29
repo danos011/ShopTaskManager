@@ -1,6 +1,6 @@
-from backend.registry import backend_redis
+from backend.registry import async_backend_redis
 
 
-def redis_ini():
-    backend_redis.set("stock:iphone", 50)
-    backend_redis.set("stock:macbook", 7)
+async def redis_ini():
+    await async_backend_redis.set("stock:iphone", 50)
+    await async_backend_redis.set("stock:macbook", 7)

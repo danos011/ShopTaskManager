@@ -1,6 +1,7 @@
 import logging
-from typing import Optional
-import redis
+
+from redis.asyncio import Redis, ConnectionPool
+import redis as redis_sync
 
 from backend.config import CONFIG
 from backend.utils import throw_server_error
@@ -9,26 +10,24 @@ logger = logging.getLogger(__name__)
 
 
 class RedisClient:
-    _instances: dict[int, "RedisClient"] = {}
+    _instance: "RedisClient" = None
 
-    def __init__(self, db: int):
-        self.db = db
-        self._client: redis.Redis | None = None
-        self._pool: redis.ConnectionPool | None = None
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
 
-    def __new__(cls, db: int):
-        if db not in cls._instances:
-            instance = super().__new__(cls)
-            cls._instances[db] = instance
-        return cls._instances[db]
+    def __init__(self):
+        self._client: Redis | None = None
+        self._pool: ConnectionPool | None = None
 
-    def connect(self) -> None:
-        if not self._pool:
+    async def connect(self) -> None:
+        if self._pool is None:
             try:
-                self._pool = redis.ConnectionPool(
+                self._pool = ConnectionPool(
                     host=CONFIG.redis_host,
                     port=CONFIG.redis_port,
-                    db=self.db,
+                    db=0,
                     password=None,
                     max_connections=CONFIG.redis_max_connections,
                     socket_timeout=CONFIG.redis_socket_timeout,
@@ -36,148 +35,197 @@ class RedisClient:
                     socket_keepalive=True,
                     health_check_interval=30,
                 )
-                self._client = redis.Redis(connection_pool=self._pool)
-                self._client.ping()
-                logger.info(f"Redis connection opened for db={self.db}")
-            except redis.ConnectionError as error:
-                logger.exception(f"Failed to connect to Redis db={self.db}: {error}")
-                print(f"Failed to connect to Redis db={self.db}: {error}")
-                raise throw_server_error(
-                    f"Failed to connect to Redis db={self.db}: {error}"
-                )
+                self._client = Redis(connection_pool=self._pool)
+                await self._client.ping()
+                logger.info("Redis connection opened")
             except Exception as error:
-                print(f"Failed to connect to Redis db={self.db}: {error}")
-                logger.exception(
-                    f"Unexpected error connecting to Redis db={self.db}: {error}"
-                )
-                raise throw_server_error(
-                    f"Unexpected error connecting to Redis db={self.db}: {error}"
-                )
+                logger.exception(f"Failed to connect to Redis: {error}")
+                raise throw_server_error(f"Failed to connect to Redis: {error}")
 
     @property
-    def client(self) -> redis.Redis:
-        if not self._client:
-            self.connect()
-        try:
-            self._client.ping()
-        except (redis.ConnectionError, redis.TimeoutError):
-            logger.warning(f"Redis connection lost for db={self.db}, reconnecting...")
-            self.connect()
+    def client(self) -> Redis:
+        if self._client is None:
+            raise RuntimeError(
+                "Redis client is not connected. Call await connect() first."
+            )
         return self._client
 
-    def get(self, key: str) -> str or bytes | None:
-        value = self.client.get(key)
+    async def ensure_connected(self) -> None:
+        if self._client is None:
+            await self.connect()
+        try:
+            await self._client.ping()
+        except Exception:
+            logger.warning("Redis connection lost, reconnecting...")
+            await self.connect()
+
+    async def get(self, key: str) -> str | bytes | None:
+        await self.ensure_connected()
+        value = await self.client.get(key)
         if value is None:
             return None
-
-        if key.startswith("invoice:"):
-            return value
-
         if isinstance(value, bytes):
             return value.decode("utf-8")
         return value
 
-    def set(self, key: str, value: str, ex: int | None = None) -> bool:
-        try:
-            return self.client.set(key, value, ex=ex)
-        except Exception as e:
-            logger.exception(f"Redis SET error for key '{key}': {e}")
-            raise throw_server_error(f"Redis SET error: {e}")
+    async def set(self, key: str, value: str, ex: int | None = None) -> bool:
+        await self.ensure_connected()
+        return await self.client.set(key, value, ex=ex)
 
-    def delete(self, *keys: str) -> int:
-        try:
-            return self.client.delete(*keys)
-        except Exception as e:
-            logger.exception(f"Redis DELETE error: {e}")
-            raise throw_server_error(f"Redis DELETE error: {e}")
+    async def delete(self, *keys: str) -> int:
+        await self.ensure_connected()
+        return await self.client.delete(*keys)
 
-    def exists(self, *keys: str) -> int:
-        try:
-            return self.client.exists(*keys)
-        except Exception as e:
-            logger.exception(f"Redis EXISTS error: {e}")
-            raise throw_server_error(f"Redis EXISTS error: {e}")
+    async def exists(self, *keys: str) -> int:
+        await self.ensure_connected()
+        return await self.client.exists(*keys)
 
-    def hget(self, name: str, key: str) -> str | None:
-        try:
-            return self.client.hget(name, key)
-        except Exception as e:
-            logger.exception(f"Redis HGET error: {e}")
-            raise throw_server_error(f"Redis HGET error: {e}")
+    async def hget(self, name: str, key: str) -> str | None:
+        await self.ensure_connected()
+        value = await self.client.hget(name, key)
+        if isinstance(value, bytes):
+            return value.decode("utf-8")
+        return value
 
-    def hset(self, name: str, key: str, value: str) -> int:
-        try:
-            return self.client.hset(name, key, value)
-        except Exception as e:
-            logger.exception(f"Redis HSET error: {e}")
-            raise throw_server_error(f"Redis HSET error: {e}")
+    async def hset(self, name: str, key: str, value: str) -> int:
+        await self.ensure_connected()
+        return await self.client.hset(name, key, value)
 
-    def hgetall(self, name: str) -> dict:
-        try:
-            return self.client.hgetall(name)
-        except Exception as e:
-            logger.exception(f"Redis HGETALL error: {e}")
-            raise throw_server_error(f"Redis HGETALL error: {e}")
+    async def hgetall(self, name: str) -> dict[str, any]:
+        await self.ensure_connected()
+        return await self.client.hgetall(name)
 
-    def close(self) -> None:
+    async def keys(self, pattern: str) -> list[str]:
+        await self.ensure_connected()
+        keys = await self.client.keys(pattern)
+        return [k if isinstance(k, str) else k.decode() for k in keys]
+
+    async def scan_iter(self, pattern: str, count: int = 100):
+        await self.ensure_connected()
+        async for key in self.client.scan_iter(match=pattern, count=count):
+            yield key if isinstance(key, str) else key.decode()
+
+    async def scan_keys(self, pattern: str, count: int = 100) -> list[str]:
+        results: list[str] = []
+        async for key in self.scan_iter(pattern, count):
+            results.append(key)
+        return results
+
+    async def close(self) -> None:
+        if self._client:
+            try:
+                await self._client.close()
+            except Exception:
+                pass
         if self._pool:
             try:
-                self._pool.disconnect()
-                logger.info(f"Redis connection closed for db={self.db}")
+                await self._pool.disconnect(inuse_connections=True)
+                logger.info("Redis connection closed")
             except Exception as e:
                 logger.exception(f"Error closing Redis connection: {e}")
                 raise throw_server_error(f"Error closing Redis connection: {e}")
 
-    def keys(self, pattern: str) -> list[str]:
-        try:
-            return self.client.keys(pattern)
-        except Exception as e:
-            logger.exception(f"Redis KEYS error for pattern '{pattern}': {e}")
-            raise throw_server_error(f"Redis KEYS error for pattern '{pattern}': {e}")
 
-    def scan_iter(self, pattern: str, count: int = 100):
-        """
-        Итератор для сканирования ключей (не блокирует Redis).
-        Рекомендуется для продакшена.
+class SyncRedisClient:
+    _instances: dict[int, "SyncRedisClient"] = {}
 
-        Args:
-            pattern: Паттерн для поиска ключей (например, "stock:*")
-            count: Количество ключей за одну итерацию (по умолчанию 100)
+    def __new__(cls, db: int):
+        if db not in cls._instances:
+            instance = super().__new__(cls)
+            cls._instances[db] = instance
+        return cls._instances[db]
 
-        Yields:
-            Ключи, подходящие под паттерн
-        """
-        try:
-            for key in self.client.scan_iter(match=pattern, count=count):
-                if isinstance(key, bytes):
-                    yield key.decode()
-                else:
-                    yield key
-        except Exception as e:
-            logger.exception(f"Redis SCAN error for pattern '{pattern}': {e}")
-            raise
+    def __init__(self, db: int):
+        self.db = db
+        self._client: redis_sync.Redis | None = None
+        self._pool: redis_sync.ConnectionPool | None = None
 
-    def scan_keys(self, pattern: str, count: int = 100) -> list[str]:
-        """
-        Получить список ключей через SCAN (не блокирует Redis).
-        Обёртка над scan_iter для удобства.
-        """
-        try:
-            return list(self.scan_iter(pattern, count))
-
-        except Exception as e:
-            logger.exception(f"Redis SCAN_KEYS error for pattern '{pattern}': {e}")
-            raise throw_server_error(
-                f"Redis SCAN_KEYS error for pattern '{pattern}': {e}"
+    def connect(self) -> None:
+        if self._pool is None:
+            self._pool = redis_sync.ConnectionPool(
+                host=CONFIG.redis_host,
+                port=CONFIG.redis_port,
+                db=self.db,
+                password=None,
+                max_connections=CONFIG.redis_max_connections,
+                socket_timeout=CONFIG.redis_socket_timeout,
+                decode_responses=CONFIG.redis_decode_responses,
+                socket_keepalive=True,
+                health_check_interval=30,
             )
+            self._client = redis_sync.Redis(connection_pool=self._pool)
+            self._client.ping()
+            logger.info(f"Sync Redis connection opened for db={self.db}")
+
+    @property
+    def client(self) -> redis_sync.Redis:
+        if self._client is None:
+            raise RuntimeError("Redis client is not connected. Call connect() first.")
+        return self._client
+
+    def ensure_connected(self) -> None:
+        if self._client is None:
+            self.connect()
+        else:
+            try:
+                self._client.ping()
+            except Exception:
+                logger.warning(
+                    f"Sync Redis connection lost for db={self.db}, reconnecting..."
+                )
+                self.connect()
+
+    # Методы совместимы по именам с async-версией, но синхронные
+    def get(self, key: str):
+        self.ensure_connected()
+        return self.client.get(key)
+
+    def set(self, key: str, value: str, ex: int | None = None) -> bool:
+        self.ensure_connected()
+        return self.client.set(key, value, ex=ex)
+
+    def delete(self, *keys: str) -> int:
+        self.ensure_connected()
+        return self.client.delete(*keys)
+
+    def exists(self, *keys: str) -> int:
+        self.ensure_connected()
+        return self.client.exists(*keys)
+
+    def hget(self, name: str, key: str):
+        self.ensure_connected()
+        return self.client.hget(name, key)
+
+    def hset(self, name: str, key: str, value: str) -> int:
+        self.ensure_connected()
+        return self.client.hset(name, key, value)
+
+    def hgetall(self, name: str) -> dict[str, str]:
+        self.ensure_connected()
+        return self.client.hgetall(name)
+
+    def keys(self, pattern: str) -> list[str]:
+        self.ensure_connected()
+        keys = self.client.keys(pattern)
+        return [k if isinstance(k, str) else k.decode() for k in keys]
+
+    def close(self) -> None:
+        if self._pool:
+            try:
+                self._pool.disconnect(inuse_connections=True)
+                logger.info(f"Sync Redis connection closed for db={self.db}")
+            except Exception as e:
+                logger.exception(f"Error closing Sync Redis connection: {e}")
+                raise throw_server_error(f"Error closing Sync Redis connection: {e}")
 
 
-# Фабричные функции
-def get_redis_broker() -> RedisClient:
-    """Redis клиент для брокера Celery (db=0)"""
-    return RedisClient(db=0)
+def get_async_redis_backend() -> RedisClient:
+    return RedisClient()
 
 
-def get_redis_backend() -> RedisClient:
-    """Redis клиент для результатов Celery (db=1)"""
-    return RedisClient(db=1)
+def get_sync_redis_broker() -> SyncRedisClient:
+    return SyncRedisClient(db=0)
+
+
+def get_sync_redis_backend() -> SyncRedisClient:
+    return SyncRedisClient(db=1)

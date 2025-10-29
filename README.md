@@ -6,6 +6,7 @@
 ---
 
 ## Содержание
+
 - <a href="#sec-arch">Архитектура</a>
 - <a href="#sec-reqs">Требования</a>
 - <a href="#sec-run">Установка и запуск</a>
@@ -19,6 +20,7 @@
 ---
 
 ## Архитектура
+
 <a id="sec-arch"></a>
 
 Сервисы:
@@ -47,6 +49,7 @@ Volumes:
 ---
 
 ## Требования
+
 <a id="sec-reqs"></a>
 
 - Docker, Docker Compose
@@ -55,6 +58,7 @@ Volumes:
 ---
 
 ## Установка и запуск (дев среда)
+
 <a id="sec-run"></a>
 
 1) Клонирование:
@@ -126,6 +130,7 @@ FLOWER_PASSWORD=<set_your_password>
 ---
 
 ## Эндпоинты API и примеры
+
 <a id="sec-api"></a>
 
 Swagger/OpenAPI:
@@ -135,14 +140,28 @@ Swagger/OpenAPI:
 Основные ручки:
 
 - `POST /order`
-    - Вход: `{"id":"123","item":"SKU-1","qty":2,"email":"user@example.com"}`
+    - Вход:
+  ```
+  {
+     "order_id": 1234,
+     "product": "macbook",
+     "quantity": 1,
+     "email": "user@example.com"
+  }
+  ```
     - Действие: ставит `process_order` в очередь `default`, возвращает `task_id`.
 - `GET /status/{task_id}`
     - Статус задачи Celery, результат из Redis (если готов).
 - `GET /invoice/{order_id}`
     - Возвращает PDF из Redis (ключ `invoice:{order_id}`).
 - `POST /test_notification`
-    - Вход: `{"email":"user@example.com","message":"Hello!"}`
+    - Вход: 
+  ```
+  {
+    "email": "user@example.com",
+    "message": "Hello!"
+  }
+  ```
     - Действие: ставит `send_notification` в очередь `priority`.
 
 Примеры:
@@ -152,7 +171,12 @@ Swagger/OpenAPI:
 ```
 curl -X POST http://localhost:8000/order 
 -H “Content-Type: application/json” 
--d ‘{“id”:“123”,“item”:“SKU-1”,“qty”:2,“email”:“user@example.com”}’
+-d ‘{
+    “id”:“123”,
+    “item”:“macbook”,
+    “quantity”:2,
+    “email”:“user@example.com”
+}’
 ```
 
 Проверить статус
@@ -171,39 +195,45 @@ curl -X POST http://localhost:8000/test_notification
 -d ‘{“email”:“user@example.com”,“message”:“Hello!”}’
 ```
 
-
 ---
 
 ## Очереди и задачи Celery
+
 <a id="sec-celery"></a>
 
-
 Очереди:
+
 - `default` — `process_order`, `generate_invoice`, `daily_stock_report`, `check_pending_orders`
 - `priority` — `send_notification`
 
 Задачи:
-- `process_order(order_id, item, qty, email)` — изменение остатков `stock:{sku}`, `order:{id}:status=processed`, инициирует инвойс.
+
+- `process_order(order_id, item, qty, email)` — изменение остатков `stock:{sku}`, `order:{id}:status=processed`,
+  инициирует инвойс.
 - `send_notification(email, message)` — задержка/валидация email (`pydantic[email]`), логирование.
 - `generate_invoice(order_id, data)` — PDF в памяти, запись байтов в Redis `invoice:{order_id}`.
 - `daily_stock_report` — суточная агрегация `stock:*`.
 - `check_pending_orders` — каждые 5 минут обрабатывает “зависшие” заказы.
 
 Маршрутизация:
+
 - `send_notification` → `priority`, остальное → `default`.
 
 ---
 
 ## Ключи в Redis
+
 <a id="sec-redis"></a>
 
 Шаблоны:
+
 - `order:{order_id}:status` — строка статуса (`processed`, `failed`, ...).
 - `invoice:{order_id}` — бинарный PDF (без TTL).
 - `stock:{sku}` — остатки (число).
 - `celery:*` — служебные ключи брокера/результатов.
 
 ## Мониторинг (Flower)
+
 <a id="sec-monitor"></a>
 
 - URL: http://localhost:5555
@@ -211,6 +241,7 @@ curl -X POST http://localhost:8000/test_notification
 - Пароль: `FLOWER_PASSWORD` из `.env`
 
 Возможности:
+
 - Воркеры, очереди, задачи (Running/Success/Failed)
 - История, графики, ревок/ретрай
 
