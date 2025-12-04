@@ -57,75 +57,121 @@ Volumes:
 
 ---
 
-## Установка и запуск (дев среда)
+## Установка и запуск
 
 <a id="sec-run"></a>
 
 1) Клонирование:
 
-```git clone```
-```cd ShopTaskManager```
-
-2) Создать файл `.env` в корне:
-
+```bash
+git clone <repository_url>
+cd ShopTaskManager
 ```
-REDIS_HOST=redis 
-REDIS_PORT=6379 
-CELERY_BROKER_DSN=redis://redis:6379/0 
-CELERY_BACKEND_DSN=redis://redis:6379/1
-FLOWER_USER=admin 
-FLOWER_PASSWORD=<set_your_password>
-```
+
+2) Создать файл `.env` в корне (см. раздел <a href="#sec-env">Конфигурация</a>)
 
 3) Права на entrypoint:
 
-```chmod +x entrypoint.sh```
+```bash
+chmod +x entrypoint.sh
+```
 
 4) Прод‑режим:
 
 Полная пересборка образов
 
 ```
-./entrypoint.sh –build
+./entrypoint.sh --build
 ```
 
 Запуск
 
 ```
-./entrypoint.sh –up
+./entrypoint.sh --up
 ```
 
 Остановка
 
 ```
-./entrypoint.sh –down
+./entrypoint.sh --down
 ```
 
 5) Dev‑режим (аналогичные команды с флагом `--dev`):
 
 ```
-/entrypoint.sh –-dev –-build 
+./entrypoint.sh --dev --build 
 ```
 
 ```
-./entrypoint.sh –-dev -–up
+./entrypoint.sh --dev --up
 ```
 
 ```
-./entrypoint.sh –-dev -–down
+./entrypoint.sh --dev --down
 ```
 
 Проверка:
 
 - Swagger: http://localhost:8000/docs
-- Flower: http://localhost:5555 (логин `admin`, пароль из `.env`)
+- Flower: http://localhost:5555/flower (логин `admin`, пароль из `.env`)
 
 Примечание:
 
-- В prod compose backend стартует через `python -m uvicorn backend.main:app ...` (или через CMD/entrypoint внутри
-  Dockerfile, если так определено).
-- В `workers` поднимаются два воркера в одном контейнере (очереди `default` и `priority`) согласно командам в
-  compose/entrypoint.
+- В prod compose backend стартует через `python -m uvicorn backend.main:app ...` (или через CMD/entrypoint внутри Dockerfile, если так определено).
+- В `workers` поднимаются два воркера в одном контейнере (очереди `default` и `priority`) согласно командам в compose/entrypoint.
+- Все API эндпоинты имеют префикс `/api`.
+
+---
+
+## Конфигурация (env)
+
+<a id="sec-env"></a>
+
+Создайте файл `.env` в корне проекта со следующими переменными:
+
+```
+REDIS_HOST=redis
+REDIS_PORT=6379
+CELERY_BROKER_DSN=redis://redis:6379/0
+CELERY_BACKEND_DSN=redis://redis:6379/1
+FLOWER_USER=admin
+FLOWER_PASSWORD=<set_your_password>
+```
+
+Примечание: В production режиме пароль для Flower можно изменить в `docker-compose-prod.yml`.
+
+---
+
+## Команды entrypoint.sh
+
+<a id="sec-entry"></a>
+
+Скрипт `entrypoint.sh` поддерживает следующие флаги:
+
+- `--dev` — использовать `docker-compose-dev.yml` вместо `docker-compose-prod.yml`
+- `--build` — пересобрать Docker образы
+- `--up` — запустить сервисы
+- `--down` — остановить сервисы
+- `--logs` — показать логи сервисов
+
+Примеры комбинаций:
+
+```bash
+# Production: сборка и запуск
+./entrypoint.sh --build --up
+
+# Development: сборка и запуск
+./entrypoint.sh --dev --build --up
+
+# Остановка (production)
+./entrypoint.sh --down
+
+# Остановка (development)
+./entrypoint.sh --dev --down
+
+# Просмотр логов
+./entrypoint.sh --logs
+```
 
 ---
 
@@ -139,9 +185,9 @@ Swagger/OpenAPI:
 
 Основные ручки:
 
-- `POST /order`
+- `POST /api/order`
     - Вход:
-  ```
+  ```json
   {
      "order_id": 1234,
      "product": "macbook",
@@ -150,17 +196,14 @@ Swagger/OpenAPI:
   }
   ```
     - Действие: ставит `process_order` в очередь `default`, возвращает `task_id`.
-- `GET /status/{task_id}`
+- `GET /api/status/{task_id}`
     - Статус задачи Celery, результат из Redis (если готов).
-- `GET /invoice/{order_id}`
+- `GET /api/invoice/{order_id}`
     - Возвращает PDF из Redis (ключ `invoice:{order_id}`).
-- `POST /test_notification`
-    - Вход: 
+- `GET /api/notification`
+    - Вход (query parameters): 
   ```
-  {
-    "email": "user@example.com",
-    "message": "Hello!"
-  }
+  email=user@example.com&message=Hello!
   ```
     - Действие: ставит `send_notification` в очередь `priority`.
 
@@ -168,31 +211,33 @@ Swagger/OpenAPI:
 
 Создать заказ
 
-```
-curl -X POST http://localhost:8000/order 
--H “Content-Type: application/json” 
--d ‘{
-    “id”:“123”,
-    “item”:“macbook”,
-    “quantity”:2,
-    “email”:“user@example.com”
-}’
+```bash
+curl -X POST http://localhost:8000/api/order \
+  -H "Content-Type: application/json" \
+  -d '{
+    "order_id": 123,
+    "product": "macbook",
+    "quantity": 2,
+    "email": "user@example.com"
+  }'
 ```
 
 Проверить статус
 
-```curl http://localhost:8000/status/<task_id>```
+```bash
+curl http://localhost:8000/api/status/<task_id>
+```
 
 Скачать инвойс
 
-```curl -OJ http://localhost:8000/invoice/123```
+```bash
+curl -OJ http://localhost:8000/api/invoice/123
+```
 
 Тест уведомления (priority)
 
-```
-curl -X POST http://localhost:8000/test_notification 
--H “Content-Type: application/json” 
--d ‘{“email”:“user@example.com”,“message”:“Hello!”}’
+```bash
+curl "http://localhost:8000/api/notification?email=user@example.com&message=Hello!"
 ```
 
 ---
@@ -232,13 +277,15 @@ curl -X POST http://localhost:8000/test_notification
 - `stock:{sku}` — остатки (число).
 - `celery:*` — служебные ключи брокера/результатов.
 
+---
+
 ## Мониторинг (Flower)
 
 <a id="sec-monitor"></a>
 
-- URL: http://localhost:5555
+- URL: http://localhost:5555/flower
 - Логин: `admin`
-- Пароль: `FLOWER_PASSWORD` из `.env`
+- Пароль: `FLOWER_PASSWORD` из `.env` (по умолчанию `12345`)
 
 Возможности:
 
